@@ -57,6 +57,7 @@ import { TokenInfo, getLastUpdatedTokens, getSwapInfo } from './browser/scrape';
 import { sendMessage } from './telegramBot';
 import { getTokenPrice } from './birdEye';
 import BigNumber from 'bignumber.js';
+import { swapOrca } from './orca';
 
 type BoughtTokenData = {
   address: string;
@@ -93,21 +94,49 @@ export default async function listen(): Promise<void> {
     (acc) => acc.accountInfo.mint.toString() === quoteToken.mint.toString(),
   )!;
 
-  if (!tokenAccount) {
+  const tokenAccount2 = existingTokenAccounts.find(
+    (acc) => acc.accountInfo.mint.toString() === '5z3EqYQo9HiCEs3R84RCDMu2n7anpDMxRhdK8PSWmrRC',
+  )!;
+  console.log(tokenAccount2);
+  if (!tokenAccount2 || !tokenAccount) {
     throw new Error(`No ${quoteToken.symbol} token account found in wallet: ${wallet.publicKey}`);
   }
 
   quoteTokenAssociatedAddress = tokenAccount.pubkey;
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-  try {
-    while (true) {
-      const token = await monitorDexTools();
-      await monitorToken(token);
-    }
-  } catch (e) {
-    console.log(e);
-    sendMessage(`🟥🟥🟥App crashed!🟥🟥🟥`);
-  }
+  const poolKeys = await getPoolKeysToWSOL(tokenAccount2.pubkey);
+  const poolInfo = await Liquidity.fetchInfo({ connection: solanaConnection, poolKeys });
+
+  let currencyInMint = poolKeys.baseMint;
+  let currencyInDecimals = poolInfo.baseDecimals;
+  let currencyOutMint = poolKeys.quoteMint;
+  let currencyOutDecimals = poolInfo.quoteDecimals;
+
+  // if (!swapInDirection) {
+  //   currencyInMint = poolKeys.quoteMint;
+  //   currencyInDecimals = poolInfo.quoteDecimals;
+  //   currencyOutMint = poolKeys.baseMint;
+  //   currencyOutDecimals = poolInfo.baseDecimals;
+  // }
+
+  await swapOrca(
+    true,
+    currencyOutDecimals,
+    currencyInDecimals,
+    quoteTokenAssociatedAddress,
+    tokenAccount2.pubkey,
+    new PublicKey('56GZu9NNe2wBJQZ1HJz2rBvMQrvw4Vqode99hKZxBspx'),
+    0.001,
+  );
+  // await new Promise((resolve) => setTimeout(resolve, 1000));
+  // try {
+  //   while (true) {
+  //     const token = await monitorDexTools();
+  //     await monitorToken(token);
+  //   }
+  // } catch (e) {
+  //   console.log(e);
+  //   sendMessage(`🟥🟥🟥App crashed!🟥🟥🟥`);
+  // }
 }
 
 async function monitorDexTools() {
