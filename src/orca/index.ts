@@ -1,5 +1,8 @@
 import {
+  MAX_SQRT_PRICE,
   MAX_SQRT_PRICE_BN,
+  MIN_SQRT_PRICE,
+  MIN_SQRT_PRICE_BN,
   ORCA_WHIRLPOOL_PROGRAM_ID,
   PDAUtil,
   SwapInput,
@@ -15,23 +18,10 @@ import { ZERO, MathUtil } from '@raydium-io/raydium-sdk';
 import { Percentage, DecimalUtil } from '@orca-so/common-sdk';
 import { solanaConnection, wallet } from '../solana';
 import { Transaction, VersionedTransaction, PublicKey, Commitment } from '@solana/web3.js';
-import { AnchorProvider, Wallet } from '@coral-xyz/anchor';
+import { AnchorProvider, BN, Wallet } from '@coral-xyz/anchor';
+import dotenv from 'dotenv';
 
-export type WalletFake = {
-  signTransaction<T extends Transaction | VersionedTransaction>(tx: T): Promise<T>;
-  signAllTransactions<T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]>;
-  publicKey: PublicKey;
-};
-
-const walletFake: WalletFake = {
-  publicKey: wallet.publicKey,
-  signTransaction: function <T extends Transaction | VersionedTransaction>(tx: T): Promise<T> {
-    return new Promise((resolve) => setTimeout(resolve, 10));
-  },
-  signAllTransactions: function <T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]> {
-    return new Promise((resolve) => setTimeout(resolve, 10));
-  },
-};
+dotenv.config();
 
 const getProvider = () => {
   const walletAnchor = new Wallet(wallet);
@@ -42,7 +32,7 @@ const getProvider = () => {
 };
 
 export async function swapOrca(
-  aToB: true,
+  aToB: boolean,
   tokenADecimal: number,
   tokenBDecimal: number,
   tokenAccountA: PublicKey,
@@ -50,13 +40,13 @@ export async function swapOrca(
   whirlpoolAddress: PublicKey,
   amount: number,
 ) {
-  const ctx = WhirlpoolContext.fromWorkspace(getProvider(), solanaConnection);
+  const ctx = WhirlpoolContext.from(solanaConnection, new Wallet(wallet), ORCA_WHIRLPOOL_PROGRAM_ID);
   const client = buildWhirlpoolClient(ctx);
   const fetcher = client.getFetcher();
 
   const whirlpoolData = await fetcher.getPool(whirlpoolAddress);
 
-  // Option 1 - Get the current tick-array PDA based on your desired sequence
+  //   // Option 1 - Get the current tick-array PDA based on your desired sequence
   const startTick = TickUtil.getStartTickIndex(whirlpoolData!.tickCurrentIndex, whirlpoolData!.tickSpacing);
   const tickArrayKey = PDAUtil.getTickArray(ORCA_WHIRLPOOL_PROGRAM_ID, whirlpoolAddress, startTick);
 
@@ -71,19 +61,27 @@ export async function swapOrca(
   );
   // This swap assumes the swap will not cross the current tick-array's boundaries
   // Swap 10 tokenA for tokenB. Or up until the price hits $4.95.
-  const amountIn = DecimalUtil.fromNumber(amount, tokenADecimal);
+  //   const amountIn = DecimalUtil.fromNumber(amount, tokenADecimal);
   const swapInput: SwapInput = {
-    amount: amountIn,
+    amount: new BN(amount),
     otherAmountThreshold: ZERO,
-    sqrtPriceLimit: MAX_SQRT_PRICE_BN, //min?
+    sqrtPriceLimit: aToB ? MIN_SQRT_PRICE_BN : MAX_SQRT_PRICE_BN, //min?
     amountSpecifiedIsInput: aToB,
     aToB: aToB,
     tickArray0: tickArrays[0].address,
     tickArray1: tickArrays[1].address,
     tickArray2: tickArrays[2].address,
   };
-
-  const oraclePda = PDAUtil.getOracle(ctx.program.programId, tickArrayKey.publicKey);
+  console.log(swapInput, {
+    whirlpool: whirlpoolAddress,
+    tokenAuthority: ctx.wallet.publicKey,
+    tokenOwnerAccountA: tokenAccountA,
+    tokenVaultA: whirlpoolData!.tokenVaultA,
+    tokenOwnerAccountB: tokenAccountB,
+    tokenVaultB: whirlpoolData!.tokenVaultB,
+    ...swapInput,
+  });
+  const oraclePda = PDAUtil.getOracle(ctx.program.programId, whirlpoolAddress);
   const txBuilder = toTx(
     ctx,
     WhirlpoolIx.swapIx(ctx.program, {
@@ -100,5 +98,5 @@ export async function swapOrca(
 
   const tx = await txBuilder.build();
   const txs = tx.transaction;
-  console.log(txs);
+  return txs;
 }

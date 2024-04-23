@@ -97,13 +97,12 @@ export default async function listen(): Promise<void> {
   const tokenAccount2 = existingTokenAccounts.find(
     (acc) => acc.accountInfo.mint.toString() === '5z3EqYQo9HiCEs3R84RCDMu2n7anpDMxRhdK8PSWmrRC',
   )!;
-  console.log(tokenAccount2);
   if (!tokenAccount2 || !tokenAccount) {
     throw new Error(`No ${quoteToken.symbol} token account found in wallet: ${wallet.publicKey}`);
   }
 
   quoteTokenAssociatedAddress = tokenAccount.pubkey;
-  const poolKeys = await getPoolKeysToWSOL(tokenAccount2.pubkey);
+  const poolKeys = await getPoolKeysToWSOL(new PublicKey('5z3EqYQo9HiCEs3R84RCDMu2n7anpDMxRhdK8PSWmrRC'));
   const poolInfo = await Liquidity.fetchInfo({ connection: solanaConnection, poolKeys });
 
   let currencyInMint = poolKeys.baseMint;
@@ -118,15 +117,17 @@ export default async function listen(): Promise<void> {
   //   currencyOutDecimals = poolInfo.baseDecimals;
   // }
 
-  await swapOrca(
+  const tx = await swapOrca(
     true,
     currencyOutDecimals,
     currencyInDecimals,
     quoteTokenAssociatedAddress,
     tokenAccount2.pubkey,
     new PublicKey('56GZu9NNe2wBJQZ1HJz2rBvMQrvw4Vqode99hKZxBspx'),
-    0.001,
+    1,
   );
+  const recentBlockhashForSwap = await solanaConnection.getLatestBlockhash();
+  await confirmTransaction(tx as VersionedTransaction, recentBlockhashForSwap);
   // await new Promise((resolve) => setTimeout(resolve, 1000));
   // try {
   //   while (true) {
