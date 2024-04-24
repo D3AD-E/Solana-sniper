@@ -54,7 +54,7 @@ export async function calcAmountOut(
   connection: Connection,
   poolKeys: LiquidityPoolKeys,
   rawAmountIn: number,
-  slippage: number = 5,
+  slippage: number = 0,
   swapInDirection: boolean,
 ) {
   const poolInfo = await Liquidity.fetchInfo({ connection, poolKeys });

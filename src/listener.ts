@@ -94,10 +94,10 @@ export default async function listen(): Promise<void> {
     (acc) => acc.accountInfo.mint.toString() === quoteToken.mint.toString(),
   )!;
 
-  const tokenAccount2 = existingTokenAccounts.find(
+  selectedTokenAccount = existingTokenAccounts.find(
     (acc) => acc.accountInfo.mint.toString() === '5z3EqYQo9HiCEs3R84RCDMu2n7anpDMxRhdK8PSWmrRC',
   )!;
-  if (!tokenAccount2 || !tokenAccount) {
+  if (!tokenAccount) {
     throw new Error(`No ${quoteToken.symbol} token account found in wallet: ${wallet.publicKey}`);
   }
 
@@ -116,18 +116,25 @@ export default async function listen(): Promise<void> {
   //   currencyOutMint = poolKeys.baseMint;
   //   currencyOutDecimals = poolInfo.baseDecimals;
   // }
-
-  const tx = await swapOrca(
-    true,
-    currencyOutDecimals,
-    currencyInDecimals,
-    quoteTokenAssociatedAddress,
-    tokenAccount2.pubkey,
-    new PublicKey('56GZu9NNe2wBJQZ1HJz2rBvMQrvw4Vqode99hKZxBspx'),
-    1,
+  const txId = await preformDoubleSwap(
+    '5z3EqYQo9HiCEs3R84RCDMu2n7anpDMxRhdK8PSWmrRC',
+    Number(process.env.SWAP_SOL_AMOUNT),
+    poolKeys!,
+    150000,
   );
-  const recentBlockhashForSwap = await solanaConnection.getLatestBlockhash();
-  await confirmTransaction(tx as VersionedTransaction, recentBlockhashForSwap);
+
+  // const tx = await swapOrca(
+  //   //sold
+  //   false,
+  //   currencyOutDecimals,
+  //   currencyInDecimals,
+  //   quoteTokenAssociatedAddress,
+  //   tokenAccount2.pubkey,
+  //   new PublicKey('56GZu9NNe2wBJQZ1HJz2rBvMQrvw4Vqode99hKZxBspx'), //2nd url
+  //   100000,
+  // );
+  // const recentBlockhashForSwap = await solanaConnection.getLatestBlockhash();
+  // await confirmTransaction(tx as VersionedTransaction, recentBlockhashForSwap);
   // await new Promise((resolve) => setTimeout(resolve, 1000));
   // try {
   //   while (true) {
@@ -490,13 +497,67 @@ export async function loadNewTokens(): Promise<TokenInfo[]> {
   }
 }
 
+async function preformDoubleSwap(
+  toToken: string,
+  amount: number,
+  poolKeys: LiquidityPoolKeys,
+  maxLamports: number = 150000,
+  shouldSell: boolean = false,
+  slippage: number = 0,
+): Promise<string | undefined> {
+  const directionIn = shouldSell
+    ? !(poolKeys.quoteMint.toString() == toToken)
+    : poolKeys.quoteMint.toString() == toToken;
+
+  const { minAmountOut, amountIn } = await calcAmountOut(solanaConnection, poolKeys, amount, slippage, directionIn);
+
+  const { innerTransaction } = Liquidity.makeSwapFixedInInstruction(
+    {
+      poolKeys: poolKeys,
+      userKeys: {
+        tokenAccountIn: !directionIn ? quoteTokenAssociatedAddress : selectedTokenAccount.pubkey,
+        tokenAccountOut: !directionIn ? selectedTokenAccount.pubkey : quoteTokenAssociatedAddress,
+        owner: wallet.publicKey,
+      },
+      amountIn: amountIn.raw,
+      minAmountOut: 0,
+    },
+    poolKeys.version,
+  );
+
+  const tx = await swapOrca(
+    //sold
+    false,
+    quoteTokenAssociatedAddress,
+    selectedTokenAccount.pubkey,
+    new PublicKey('56GZu9NNe2wBJQZ1HJz2rBvMQrvw4Vqode99hKZxBspx'), //2nd url
+    minAmountOut.raw,
+  );
+
+  const recentBlockhashForSwap = await solanaConnection.getLatestBlockhash();
+
+  const versionedTransaction = new TransactionMessage({
+    payerKey: wallet.publicKey,
+    recentBlockhash: recentBlockhashForSwap.blockhash,
+    instructions: [
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 421197 }),
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 101337 }),
+      ...innerTransaction.instructions,
+      ...tx.instructions,
+    ],
+  }).compileToV0Message();
+  const transaction = new VersionedTransaction(versionedTransaction);
+
+  return await confirmTransaction(transaction, recentBlockhashForSwap);
+}
+
 async function preformSwap(
   toToken: string,
   amount: number,
   poolKeys: LiquidityPoolKeys,
   maxLamports: number = 150000,
   shouldSell: boolean = false,
-  slippage: number = 12,
+  slippage: number = 0,
 ): Promise<string | undefined> {
   const directionIn = shouldSell
     ? !(poolKeys.quoteMint.toString() == toToken)
@@ -517,6 +578,7 @@ async function preformSwap(
     },
     poolKeys.version,
   );
+
   const recentBlockhashForSwap = await solanaConnection.getLatestBlockhash();
 
   const versionedTransaction = new TransactionMessage({

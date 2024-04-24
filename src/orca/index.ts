@@ -33,12 +33,10 @@ const getProvider = () => {
 
 export async function swapOrca(
   aToB: boolean,
-  tokenADecimal: number,
-  tokenBDecimal: number,
   tokenAccountA: PublicKey,
   tokenAccountB: PublicKey,
   whirlpoolAddress: PublicKey,
-  amount: number,
+  amount: BN,
 ) {
   const ctx = WhirlpoolContext.from(solanaConnection, new Wallet(wallet), ORCA_WHIRLPOOL_PROGRAM_ID);
   const client = buildWhirlpoolClient(ctx);
@@ -63,16 +61,19 @@ export async function swapOrca(
   // Swap 10 tokenA for tokenB. Or up until the price hits $4.95.
   //   const amountIn = DecimalUtil.fromNumber(amount, tokenADecimal);
   const swapInput: SwapInput = {
-    amount: new BN(amount),
+    amount: amount,
     otherAmountThreshold: ZERO,
     sqrtPriceLimit: aToB ? MIN_SQRT_PRICE_BN : MAX_SQRT_PRICE_BN, //min?
-    amountSpecifiedIsInput: aToB,
+    amountSpecifiedIsInput: !aToB,
     aToB: aToB,
     tickArray0: tickArrays[0].address,
     tickArray1: tickArrays[1].address,
     tickArray2: tickArrays[2].address,
   };
-  console.log(swapInput, {
+
+  const oraclePda = PDAUtil.getOracle(ctx.program.programId, whirlpoolAddress);
+
+  return WhirlpoolIx.swapIx(ctx.program, {
     whirlpool: whirlpoolAddress,
     tokenAuthority: ctx.wallet.publicKey,
     tokenOwnerAccountA: tokenAccountA,
@@ -80,23 +81,6 @@ export async function swapOrca(
     tokenOwnerAccountB: tokenAccountB,
     tokenVaultB: whirlpoolData!.tokenVaultB,
     ...swapInput,
+    oracle: oraclePda.publicKey,
   });
-  const oraclePda = PDAUtil.getOracle(ctx.program.programId, whirlpoolAddress);
-  const txBuilder = toTx(
-    ctx,
-    WhirlpoolIx.swapIx(ctx.program, {
-      whirlpool: whirlpoolAddress,
-      tokenAuthority: ctx.wallet.publicKey,
-      tokenOwnerAccountA: tokenAccountA,
-      tokenVaultA: whirlpoolData!.tokenVaultA,
-      tokenOwnerAccountB: tokenAccountB,
-      tokenVaultB: whirlpoolData!.tokenVaultB,
-      ...swapInput,
-      oracle: oraclePda.publicKey,
-    }),
-  );
-
-  const tx = await txBuilder.build();
-  const txs = tx.transaction;
-  return txs;
 }
