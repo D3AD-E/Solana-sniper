@@ -41,4 +41,14 @@ export enum WorkerAction {
 
 export enum WorkerResult {
   SellSuccess,
+  TokenPriceUpdate,
+}
+
+export type TokenData = {
+  price: string;
+  time: number;
+};
+
+export interface DataStore {
+  [key: string]: TokenData[];
 }

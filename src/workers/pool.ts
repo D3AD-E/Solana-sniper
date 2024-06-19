@@ -1,22 +1,29 @@
 import { PublicKey } from '@solana/web3.js';
-import { ParentMessage, WorkerAction, WorkerMessage, WorkerResult } from './worker.types';
+import { DataStore, ParentMessage, WorkerAction, WorkerMessage, WorkerResult } from './worker.types';
 import { RawAccount } from '@solana/spl-token';
 import { MinimalTokenAccountData } from '../cryptoQueries/cryptoQueries.types';
 import { Worker } from 'worker_threads';
 import { toSerializable } from './converter';
-
+import { writeFile, readFileSync, existsSync } from 'fs';
+import logger from '../utils/logger';
+const DATA_FILE = 'data.json';
 export class WorkerPool {
   private numWorkers: number;
   private workers: Worker[];
   private freeWorkers: Worker[];
   private takenWorkers: Map<string, Worker> = new Map<string, Worker>();
   private quoteTokenAssociatedAddress: PublicKey;
+  private dataStore: DataStore = {};
 
   constructor(numWorkers: number, quoteTokenAssociatedAddress: PublicKey) {
     this.numWorkers = numWorkers;
     this.workers = [];
     this.freeWorkers = [];
     this.quoteTokenAssociatedAddress = quoteTokenAssociatedAddress;
+    if (existsSync(DATA_FILE)) {
+      const data = readFileSync(DATA_FILE, 'utf-8');
+      Object.assign(this.dataStore, JSON.parse(data));
+    }
     this.createWorkers();
   }
 
@@ -24,7 +31,7 @@ export class WorkerPool {
     worker.postMessage(JSON.stringify(toSerializable(message)));
   }
 
-  private createWorkers() {
+  private async createWorkers() {
     for (let i = 0; i < this.numWorkers; i++) {
       const worker = new Worker('./src/workers/worker.ts', {
         execArgv: ['--require', 'ts-node/register'],
@@ -33,6 +40,19 @@ export class WorkerPool {
       worker.on('message', (message: ParentMessage) => {
         if (message.result === WorkerResult.SellSuccess) {
           this.freeWorker(message.data.token);
+        } else if (message.result === WorkerResult.TokenPriceUpdate) {
+          const tokenAddress = message.data.token;
+          if (!this.dataStore[tokenAddress]) {
+            this.dataStore[tokenAddress] = [];
+          }
+          this.dataStore[tokenAddress].push({ time: message.data.time, price: message.data.price });
+
+          // Save to JSON file
+          writeFile(DATA_FILE, JSON.stringify(this.dataStore, null, 2), (err) => {
+            if (err) {
+              console.error('Error writing to file', err);
+            }
+          });
         }
       });
       worker.on('error', (message: any) => {
@@ -65,6 +85,13 @@ export class WorkerPool {
         },
       };
       this.sendMessageToWorker(worker, tokenGotMessage);
+      setTimeout(
+        () => {
+          this.freeWorker(token);
+          console.log(`Worker for ${token} terminated.`);
+        },
+        4 * 60 * 1000,
+      );
     } else throw 'No free workers';
   }
 

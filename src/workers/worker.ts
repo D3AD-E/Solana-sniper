@@ -93,7 +93,7 @@ function setupPairSocket() {
 }
 
 async function getSwappedAmounts(instructionWithSwap: any, signature: any) {
-  if (!foundTokenData) return;
+  // if (!foundTokenData) return;
   const swapDataBuy = instructionWithSwap.instructions?.filter((x: any) => x.parsed?.info.amount !== undefined);
   if (swapDataBuy !== undefined) {
     const sol = swapDataBuy.find(
@@ -103,49 +103,60 @@ async function getSwappedAmounts(instructionWithSwap: any, signature: any) {
       const other = swapDataBuy.find(
         (x: any) => x.parsed.info.authority === '5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1',
       );
-      if (foundTokenData) {
-        if (sol === undefined || other === undefined) {
-          logger.warn(`Geyser is broken, selling`);
-          sellOnActionGeyser(foundTokenData!);
-          return;
-        }
-        if (new Date() >= timeToSellTimeoutGeyser!) {
-          if (!foundTokenData) return;
-          logger.info(`Selling at TIMEOUT, change addr ${foundTokenData!.mint.toString()}`);
-          await sellOnActionGeyser(foundTokenData!);
-          return;
-        }
-        let price = BigNumber(sol.parsed.info.amount as string).div(other.parsed.info.amount as string);
-        const isSolSwapped = price.gt(1);
-        if (isSolSwapped) price = BigNumber(other.parsed.info.amount as string).div(sol.parsed.info.amount as string);
-        if (!bignumberInitialPrice) {
-          bignumberInitialPrice = price;
-          return;
-        }
-
-        const percentageGain = price.minus(bignumberInitialPrice).div(bignumberInitialPrice).multipliedBy(100);
-        let percentageGainNumber = Number(percentageGain.toFixed(5));
-
-        if (Number(percentageGain.toFixed(5)) < 0) logger.warn(percentageGain.toString() + ' ' + signature.toString());
-        else logger.info(percentageGain.toString() + ' ' + signature.toString());
-
-        if (percentageGainNumber <= stopLossPrecents) {
-          if (!foundTokenData) return;
-          logger.warn(`Selling at LOSS, loss ${percentageGainNumber}%, addr ${foundTokenData!.mint.toString()}`);
-          await sellOnActionGeyser(foundTokenData!);
-          return;
-        }
-        if (percentageGainNumber >= takeProfitPercents) {
-          if (!foundTokenData) return;
-          logger.info(
-            `Selling at TAKEPROFIT, increase ${percentageGainNumber}%, addr ${foundTokenData!.mint.toString()}`,
-          );
-          await sellOnActionGeyser(foundTokenData!);
-
-          return;
-        }
+      // if (foundTokenData) {
+      if (sol === undefined || other === undefined) {
+        logger.warn(`Geyser is broken, selling`);
+        // sellOnActionGeyser(foundTokenData!);
+        return;
       }
+      // if (new Date() >= timeToSellTimeoutGeyser!) {
+      //   if (!foundTokenData) return;
+      //   logger.info(`Selling at TIMEOUT, change addr ${foundTokenData!.mint.toString()}`);
+      //   await sellOnActionGeyser(foundTokenData!);
+      //   return;
+      // }
+      let price = BigNumber(sol.parsed.info.amount as string).div(other.parsed.info.amount as string);
+      const isSolSwapped = price.gt(1);
+      if (isSolSwapped) price = BigNumber(other.parsed.info.amount as string).div(sol.parsed.info.amount as string);
+      const newDate = new Date();
+      const time = newDate.getTime() - sentBuyTime!.getTime();
+      const message: ParentMessage = {
+        result: WorkerResult.TokenPriceUpdate,
+        data: {
+          token: currentTokenKey,
+          price: price.toString(),
+          time,
+        },
+      };
+      parentPort!.postMessage(message);
+      // if (!bignumberInitialPrice) {
+      //   bignumberInitialPrice = price;
+      //   return;
+      // }
+
+      // const percentageGain = price.minus(bignumberInitialPrice).div(bignumberInitialPrice).multipliedBy(100);
+      // let percentageGainNumber = Number(percentageGain.toFixed(5));
+
+      // if (Number(percentageGain.toFixed(5)) < 0) logger.warn(percentageGain.toString() + ' ' + signature.toString());
+      // else logger.info(percentageGain.toString() + ' ' + signature.toString());
+
+      // if (percentageGainNumber <= stopLossPrecents) {
+      //   if (!foundTokenData) return;
+      //   logger.warn(`Selling at LOSS, loss ${percentageGainNumber}%, addr ${foundTokenData!.mint.toString()}`);
+      //   await sellOnActionGeyser(foundTokenData!);
+      //   return;
+      // }
+      // if (percentageGainNumber >= takeProfitPercents) {
+      //   if (!foundTokenData) return;
+      //   logger.info(
+      //     `Selling at TAKEPROFIT, increase ${percentageGainNumber}%, addr ${foundTokenData!.mint.toString()}`,
+      //   );
+      //   await sellOnActionGeyser(foundTokenData!);
+
+      //   return;
+      // }
     }
+    // }
   }
 }
 
