@@ -19,13 +19,13 @@ let swapAmount: TokenAmount;
 let quoteTokenAssociatedAddress: PublicKey;
 let ws: WebSocket | undefined = undefined;
 
-const maxLamports = 500000;
+const maxLamports = 5001138;
 let currentLamports = maxLamports;
 let lastBlocks: Block[] = [];
 let processedTokens: string[] = [];
 let workerPool: WorkerPool | undefined = undefined;
 const enableProtection = envVarToBoolean(process.env.ENABLE_PROTECTION);
-const minPoolSize = 100;
+const minPoolSize = 1;
 export default async function snipe(): Promise<void> {
   existingTokenAccounts = await getTokenAccounts(
     solanaConnection,
@@ -40,12 +40,15 @@ export default async function snipe(): Promise<void> {
   }
   quoteTokenAssociatedAddress = tokenAccount.pubkey;
   workerPool = new WorkerPool(Number(process.env.WORKER_AMOUNT!), quoteTokenAssociatedAddress);
-  if (enableProtection) {
-    setInterval(storeRecentBlockhashes, 700);
-    await new Promise((resolve) => setTimeout(resolve, 140000));
-  } else {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
+  setInterval(storeRecentBlockhashes, 700);
+  // if (enableProtection) {
+  //   setInterval(storeRecentBlockhashes, 700);
+  //   await new Promise((resolve) => setTimeout(resolve, 140000));
+  // } else {
+  //   await new Promise((resolve) => setTimeout(resolve, 1000));
+  // }
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
   logger.info('Started listening');
   //https://solscan.io/tx/Kvu4Qd5RBjUDoX5yzUNNtd17Bhb78qTo93hqYgDEr8hb1ysTf9zGFDgvS1QTnz6ghY3f6Fo59GWYQSgkTJxo9Cd mintundefined
   // skipped https://www.dextools.io/app/en/solana/pair-explorer/HLBmAcU65tm999f3WrshSdeFgAbZNxEGrqD6DzAdR1iF?t=1717674277533 because of jitotip, not sure if want to fix
@@ -202,8 +205,12 @@ function setupLiquiditySocket() {
           logger.info(
             `Processing pool: ${mintAddress.toString()} with ${poolSize.toFixed()} ${quoteToken.symbol} in liquidity`,
           );
-          if (Number(poolSize.toFixed()) < minPoolSize) {
-            logger.warn('Price too low');
+          // if (Number(poolSize.toFixed()) < minPoolSize) {
+          //   logger.warn('Price too low');
+          //   return;
+          // }
+          if (Number(poolSize.toFixed()) > 99) {
+            logger.warn('Price too high');
             return;
           }
 
@@ -372,7 +379,7 @@ export async function processGeyserLiquidity(
 ): Promise<TransactionConfirmationStrategy> {
   let block = undefined;
   if (enableProtection) block = await getBlockForBuy();
-  else block = await solanaConnection.getLatestBlockhash('processed');
+  else block = lastBlocks[lastBlocks.length - 1];
 
   const packet = await buy(id, poolState, quoteTokenAssociatedAddress, currentLamports, mint, block);
   workerPool!.addTokenAccount(mint.toString(), packet.tokenAccount);

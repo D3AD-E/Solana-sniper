@@ -91,7 +91,7 @@ function setupPairSocket() {
     logger.warn('WebSocket is closed pair');
 
     // throw 'Websocket closed';
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     setupPairSocket();
   });
 }
@@ -108,7 +108,8 @@ async function getSwappedAmounts(instructionWithSwap: any, signature: any) {
       );
       if (sol === undefined || other === undefined) {
         logger.warn(`Geyser is broken`);
-        if (foundTokenData) sellOnActionGeyser(foundTokenData!);
+        logger.warn(signature);
+        // if (foundTokenData) sellOnActionGeyser(foundTokenData!);
         return;
       }
       let price = BigNumber(sol.parsed.info.amount as string).div(other.parsed.info.amount as string);
@@ -271,11 +272,11 @@ parentPort?.on('message', (data: string) => {
 
     priceTimeoutId = setTimeout(() => {
       if (!foundTokenData) return;
-      if (percentageGainNumber && percentageGainNumber < 1) {
-        priceTimeoutId = undefined;
-        logger.info(`Selling at PRICETIMEOUT, change addr ${foundTokenData!.mint.toString()}`);
-        sellOnActionGeyser(foundTokenData!);
-      }
+      // if (percentageGainNumber && percentageGainNumber < 1) {
+      //   priceTimeoutId = undefined;
+      //   logger.info(`Selling at PRICETIMEOUT, change addr ${foundTokenData!.mint.toString()}`);
+      //   sellOnActionGeyser(foundTokenData!);
+      // }
       return;
     }, 50 * 1000);
   } else if (message.action === WorkerAction.AddTokenAccount) {
