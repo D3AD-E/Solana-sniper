@@ -1,6 +1,13 @@
-import { TokenAmount, Token, TokenAccount, TOKEN_PROGRAM_ID, LiquidityStateV4 } from '@raydium-io/raydium-sdk';
+import {
+  TokenAmount,
+  Token,
+  TokenAccount,
+  TOKEN_PROGRAM_ID,
+  LiquidityStateV4,
+  LIQUIDITY_STATE_LAYOUT_V4,
+} from '@raydium-io/raydium-sdk';
 import { AccountLayout, getMint } from '@solana/spl-token';
-import { Commitment, PublicKey, TransactionConfirmationStrategy } from '@solana/web3.js';
+import { Commitment, ParsedAccountData, PublicKey, TransactionConfirmationStrategy } from '@solana/web3.js';
 import { buy, getTokenAccounts } from './cryptoQueries';
 import logger from './utils/logger';
 import { solanaConnection, wallet } from './solana';
@@ -188,6 +195,21 @@ function setupLiquiditySocket() {
             logger.warn('Moon/pump scam');
             return;
           }
+          const acc = await solanaConnection.getAccountInfo(new PublicKey(mintAddress));
+          const parsed = LIQUIDITY_STATE_LAYOUT_V4.decode(acc!.data);
+          const lpReserve = parsed.lpReserve;
+          console.log(lpReserve);
+          const accInfo = await solanaConnection.getParsedAccountInfo(new PublicKey(inner[31].parsed.info.mint));
+          const mintInfo = (accInfo?.value?.data as ParsedAccountData)?.parsed?.info;
+          const lpReserveNew = lpReserve / Math.pow(10, mintInfo?.decimals as number);
+          const actualSupply = mintInfo?.supply / Math.pow(10, mintInfo?.decimals as number);
+          console.log(
+            `lpMint: ${inner[31].parsed.info.mint}, Reserve: ${lpReserveNew}, Actual Supply: ${actualSupply}`,
+          );
+          const burnAmt = lpReserveNew - actualSupply;
+          console.log(`burn amt: ${burnAmt}`);
+          const burnPct = (burnAmt / lpReserveNew) * 100;
+          console.log(`${burnPct} LP burned`);
           if ((mintAddress as string).endsWith('pump')) {
             logger.warn('Token pumpscam');
             return;
@@ -224,136 +246,136 @@ function setupLiquiditySocket() {
           //   return;
           // }
 
-          logger.info('Listening to geyser Pair');
-          const lastRequest = {
-            jsonrpc: '2.0',
-            id: 420,
-            method: 'transactionSubscribe',
-            params: [
-              {
-                vote: false,
-                failed: false,
-                accountInclude: [mintAddress],
-              },
-              {
-                commitment: 'processed',
-                encoding: 'jsonParsed',
-                transactionDetails: 'full',
-                showRewards: false,
-                maxSupportedTransactionVersion: 1,
-              },
-            ],
-          };
-          if (workerPool!.isTokenTaken(mintAddress)) {
-            logger.warn('Token is taken');
-            return;
-          }
-          workerPool!.gotToken(mintAddress, lastRequest);
+          // logger.info('Listening to geyser Pair');
+          // const lastRequest = {
+          //   jsonrpc: '2.0',
+          //   id: 420,
+          //   method: 'transactionSubscribe',
+          //   params: [
+          //     {
+          //       vote: false,
+          //       failed: false,
+          //       accountInclude: [mintAddress],
+          //     },
+          //     {
+          //       commitment: 'processed',
+          //       encoding: 'jsonParsed',
+          //       transactionDetails: 'full',
+          //       showRewards: false,
+          //       maxSupportedTransactionVersion: 1,
+          //     },
+          //   ],
+          // };
+          // if (workerPool!.isTokenTaken(mintAddress)) {
+          //   logger.warn('Token is taken');
+          //   return;
+          // }
+          // workerPool!.gotToken(mintAddress, lastRequest);
 
-          const sampleKeys = {
-            status: undefined,
-            owner: new PublicKey('So11111111111111111111111111111111111111112'),
-            nonce: undefined,
-            maxOrder: undefined,
-            depth: undefined,
-            baseDecimal: Number(mintAccount.decimals),
-            quoteDecimal: 9,
-            state: undefined,
-            resetFlag: undefined,
-            minSize: undefined,
-            volMaxCutRatio: undefined,
-            amountWaveRatio: undefined,
-            baseLotSize: undefined,
-            quoteLotSize: undefined,
-            minPriceMultiplier: undefined,
-            maxPriceMultiplier: undefined,
-            systemDecimalValue: undefined,
-            minSeparateNumerator: undefined,
-            minSeparateDenominator: undefined,
-            tradeFeeNumerator: undefined,
-            tradeFeeDenominator: undefined,
-            pnlNumerator: undefined,
-            pnlDenominator: undefined,
-            swapFeeNumerator: undefined,
-            swapFeeDenominator: undefined,
-            baseNeedTakePnl: undefined,
-            quoteNeedTakePnl: undefined,
-            quoteTotalPnl: undefined,
-            baseTotalPnl: undefined,
-            poolOpenTime: undefined,
-            punishPcAmount: undefined,
-            punishCoinAmount: undefined,
-            orderbookToInitTime: undefined,
-            swapBaseInAmount: undefined,
-            swapQuoteOutAmount: undefined,
-            swapBase2QuoteFee: undefined,
-            swapQuoteInAmount: inner[30].parsed.info.amount,
-            swapBaseOutAmount: undefined,
-            swapQuote2BaseFee: undefined,
-            baseVault: new PublicKey(inner[12].parsed.info.account),
-            quoteVault: new PublicKey(inner[15].parsed.info.account),
-            baseMint: isFirstMintSol
-              ? new PublicKey('So11111111111111111111111111111111111111112')
-              : new PublicKey(mintAddress),
-            quoteMint: isFirstMintSol
-              ? new PublicKey(mintAddress)
-              : new PublicKey('So11111111111111111111111111111111111111112'), //was q sol
-            lpMint: new PublicKey(inner[31].parsed.info.mint),
-            openOrders: new PublicKey(inner[22].parsed.info.account),
-            marketId: new PublicKey(inner[23].accounts[2]),
-            marketProgramId: new PublicKey(inner[23].programId),
-            targetOrders: new PublicKey(inner[4].parsed.info.account),
-            withdrawQueue: new PublicKey('11111111111111111111111111111111'),
-            lpVault: new PublicKey('11111111111111111111111111111111'),
-            lpReserve: undefined,
-            padding: [],
-          };
-          try {
-            const packet = await processGeyserLiquidity(
-              new PublicKey(inner[inner.length - 13].parsed.info.account),
-              sampleKeys,
-              new PublicKey(mintAddress),
-            );
-            solanaConnection
-              .confirmTransaction(packet as TransactionConfirmationStrategy, 'finalized')
-              .then(async (confirmation) => {
-                if (confirmation.value.err) {
-                  logger.warn('Sent buy bundle but it failed');
-                  workerPool!.freeWorker(mintAddress);
-                  ws?.close();
-                } else {
-                  await new Promise((resolve) => setTimeout(resolve, 5000));
-                  if (!processedTokens.some((t) => t === mintAddress)) {
-                    logger.warn('Websocket took too long');
-                    const tokenAccounts = await getTokenAccounts(solanaConnection, wallet.publicKey, 'processed');
-                    await new Promise((resolve) => setTimeout(resolve, 500));
-                    logger.info('Currentkey ' + mintAddress);
-                    const tokenAccount = tokenAccounts.find((acc) => acc.accountInfo.mint.toString() === mintAddress)!;
-                    if (!tokenAccount) {
-                      logger.info(`No token account found in wallet, but it succeeded`);
-                      return;
-                    }
-                    logger.warn(`Selling bc didnt get token`);
-                    workerPool!.forceSell(mintAddress, {
-                      ...tokenAccount.accountInfo,
-                      delegateOption: tokenAccount.accountInfo.delegateOption === 1 ? 1 : 0,
-                      isNativeOption: tokenAccount.accountInfo.isNativeOption === 1 ? 1 : 0,
-                      closeAuthorityOption: tokenAccount.accountInfo.closeAuthorityOption === 1 ? 1 : 0,
-                    });
-                  }
-                }
-              })
-              .catch((e) => {
-                console.log(e);
-                logger.warn('Buy TX hash expired');
-                workerPool!.freeWorker(mintAddress);
-                ws?.close();
-              });
-          } catch (e) {
-            logger.warn('Buy failed');
-            console.error(e);
-            workerPool!.freeWorker(mintAddress);
-          }
+          // const sampleKeys = {
+          //   status: undefined,
+          //   owner: new PublicKey('So11111111111111111111111111111111111111112'),
+          //   nonce: undefined,
+          //   maxOrder: undefined,
+          //   depth: undefined,
+          //   baseDecimal: Number(mintAccount.decimals),
+          //   quoteDecimal: 9,
+          //   state: undefined,
+          //   resetFlag: undefined,
+          //   minSize: undefined,
+          //   volMaxCutRatio: undefined,
+          //   amountWaveRatio: undefined,
+          //   baseLotSize: undefined,
+          //   quoteLotSize: undefined,
+          //   minPriceMultiplier: undefined,
+          //   maxPriceMultiplier: undefined,
+          //   systemDecimalValue: undefined,
+          //   minSeparateNumerator: undefined,
+          //   minSeparateDenominator: undefined,
+          //   tradeFeeNumerator: undefined,
+          //   tradeFeeDenominator: undefined,
+          //   pnlNumerator: undefined,
+          //   pnlDenominator: undefined,
+          //   swapFeeNumerator: undefined,
+          //   swapFeeDenominator: undefined,
+          //   baseNeedTakePnl: undefined,
+          //   quoteNeedTakePnl: undefined,
+          //   quoteTotalPnl: undefined,
+          //   baseTotalPnl: undefined,
+          //   poolOpenTime: undefined,
+          //   punishPcAmount: undefined,
+          //   punishCoinAmount: undefined,
+          //   orderbookToInitTime: undefined,
+          //   swapBaseInAmount: undefined,
+          //   swapQuoteOutAmount: undefined,
+          //   swapBase2QuoteFee: undefined,
+          //   swapQuoteInAmount: inner[30].parsed.info.amount,
+          //   swapBaseOutAmount: undefined,
+          //   swapQuote2BaseFee: undefined,
+          //   baseVault: new PublicKey(inner[12].parsed.info.account),
+          //   quoteVault: new PublicKey(inner[15].parsed.info.account),
+          //   baseMint: isFirstMintSol
+          //     ? new PublicKey('So11111111111111111111111111111111111111112')
+          //     : new PublicKey(mintAddress),
+          //   quoteMint: isFirstMintSol
+          //     ? new PublicKey(mintAddress)
+          //     : new PublicKey('So11111111111111111111111111111111111111112'), //was q sol
+          //   lpMint: new PublicKey(inner[31].parsed.info.mint),
+          //   openOrders: new PublicKey(inner[22].parsed.info.account),
+          //   marketId: new PublicKey(inner[23].accounts[2]),
+          //   marketProgramId: new PublicKey(inner[23].programId),
+          //   targetOrders: new PublicKey(inner[4].parsed.info.account),
+          //   withdrawQueue: new PublicKey('11111111111111111111111111111111'),
+          //   lpVault: new PublicKey('11111111111111111111111111111111'),
+          //   lpReserve: undefined,
+          //   padding: [],
+          // };
+          // try {
+          //   const packet = await processGeyserLiquidity(
+          //     new PublicKey(inner[inner.length - 13].parsed.info.account),
+          //     sampleKeys,
+          //     new PublicKey(mintAddress),
+          //   );
+          //   solanaConnection
+          //     .confirmTransaction(packet as TransactionConfirmationStrategy, 'finalized')
+          //     .then(async (confirmation) => {
+          //       if (confirmation.value.err) {
+          //         logger.warn('Sent buy bundle but it failed');
+          //         workerPool!.freeWorker(mintAddress);
+          //         ws?.close();
+          //       } else {
+          //         await new Promise((resolve) => setTimeout(resolve, 5000));
+          //         if (!processedTokens.some((t) => t === mintAddress)) {
+          //           logger.warn('Websocket took too long');
+          //           const tokenAccounts = await getTokenAccounts(solanaConnection, wallet.publicKey, 'processed');
+          //           await new Promise((resolve) => setTimeout(resolve, 500));
+          //           logger.info('Currentkey ' + mintAddress);
+          //           const tokenAccount = tokenAccounts.find((acc) => acc.accountInfo.mint.toString() === mintAddress)!;
+          //           if (!tokenAccount) {
+          //             logger.info(`No token account found in wallet, but it succeeded`);
+          //             return;
+          //           }
+          //           logger.warn(`Selling bc didnt get token`);
+          //           workerPool!.forceSell(mintAddress, {
+          //             ...tokenAccount.accountInfo,
+          //             delegateOption: tokenAccount.accountInfo.delegateOption === 1 ? 1 : 0,
+          //             isNativeOption: tokenAccount.accountInfo.isNativeOption === 1 ? 1 : 0,
+          //             closeAuthorityOption: tokenAccount.accountInfo.closeAuthorityOption === 1 ? 1 : 0,
+          //           });
+          //         }
+          //       }
+          //     })
+          //     .catch((e) => {
+          //       console.log(e);
+          //       logger.warn('Buy TX hash expired');
+          //       workerPool!.freeWorker(mintAddress);
+          //       ws?.close();
+          //     });
+          // } catch (e) {
+          //   logger.warn('Buy failed');
+          //   console.error(e);
+          //   workerPool!.freeWorker(mintAddress);
+          // }
         }
       }
     } catch (e) {
