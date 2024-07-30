@@ -209,10 +209,10 @@ function setupLiquiditySocket() {
           //   logger.warn('Price too low');
           //   return;
           // }
-          // if (Number(poolSize.toFixed()) > 500) {
-          //   logger.warn('Price too high');
-          //   return;
-          // }
+          if (Number(poolSize.toFixed()) > 50) {
+            logger.warn('Price too high');
+            return;
+          }
 
           // const recentSignatures = await solanaConnection.getSignaturesForAddress(
           //   new PublicKey(mintAddress),
