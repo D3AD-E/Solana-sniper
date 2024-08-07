@@ -209,7 +209,7 @@ function setupLiquiditySocket() {
           //   logger.warn('Price too low');
           //   return;
           // }
-          if (Number(poolSize.toFixed()) > 5) {
+          if (Number(poolSize.toFixed()) > 3) {
             logger.warn('Price too high');
             return;
           }
