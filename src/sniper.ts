@@ -205,10 +205,10 @@ function setupLiquiditySocket() {
           logger.info(
             `Processing pool: ${mintAddress.toString()} with ${poolSize.toFixed()} ${quoteToken.symbol} in liquidity`,
           );
-          if (Number(poolSize.toFixed()) <= 3) {
-            logger.warn('Price too low');
-            return;
-          }
+          // if (Number(poolSize.toFixed()) <= 3) {
+          //   logger.warn('Price too low');
+          //   return;
+          // }
           if (Number(poolSize.toFixed()) > 5) {
             logger.warn('Price too high');
             return;
